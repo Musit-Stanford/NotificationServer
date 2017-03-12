@@ -11,9 +11,36 @@ admin.initializeApp({
 
 var db = admin.database()
 var ref = db.ref('messages')
-
-ref.orderByChild('createdAt').endAt(Date.now()).on('child_added', function(snapshot) {
-  console.log('new record', snapshot.key);
+var conversationRef = db.ref('conversations')
+var usersDataRef = db.ref('usersData')
+ref.orderByChild('timestamp').startAt(Date.now()).on('child_added', (messageSnapshot) => {
+  var message = messageSnapshot.val();
+  conversationRef.child(message.conversationId).once('value', (conversationSnapshot) => {
+    var conversation = conversationSnapshot.val();
+    var userIds = Object.keys(conversation.users).filter((userId) => userId !== message.userId)
+    for (var i = userIds.length - 1; i >= 0; i--) {
+      var userId = userIds[i];
+      usersDataRef.child(userId).once('value', (userSnapshot) => {
+        var user = userSnapshot.val()
+        var registrationToken = user.registrationToken;
+        var payload = {
+          notification: {
+            title: "New rec from " + message.userName,
+            body: message.track
+          }
+        };
+        admin.messaging().sendToDevice(registrationToken, payload, {show_in_foreground: true})
+        .then(function(response) {
+          // See the MessagingDevicesResponse reference documentation for
+          // the contents of response.
+          console.log("Successfully sent message:", response);
+        })
+        .catch(function(error) {
+          console.log("Error sending message:", error);
+        });
+      });
+    }
+  });
 });
 
 app.set('port', (process.env.PORT || 5000))
